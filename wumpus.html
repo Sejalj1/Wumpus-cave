@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Wumpus Cave</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --accent: #58a6ff; --danger: #f85149; --gold: #e3b341;
+    --green: #3fb950; --muted: #8b949e; --text: #c9d1d9;
+    --font: 'Share Tech Mono', monospace;
+  }
+  html, body { background: var(--bg); color: var(--text); font-family: var(--font); height: 100%; }
+
+  #shell {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 12px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* TOPBAR */
+  #topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 4px; border-bottom: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  #logo { font-size: 18px; color: var(--gold); letter-spacing: 0.12em; }
+  #logo span { color: var(--danger); }
+  #hud-pills { display: flex; gap: 18px; font-size: 13px; }
+  .pill { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .pill-val { color: var(--text); font-size: 15px; }
+
+  /* MAIN ROW: left (map+log) | right (sidebar) */
+  #main-row {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    gap: 10px;
+    align-items: start;
+  }
+
+  /* LEFT COLUMN */
+  #left-col { display: flex; flex-direction: column; gap: 10px; }
+
+  /* MAP */
+  #map-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 6 / 4;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg);
+  }
+  #cave-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* END OVERLAY */
+  #end-overlay {
+    position: absolute; inset: 0; background: rgba(13,17,23,0.92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  }
+  #end-overlay.hidden { display: none; }
+  #end-big   { font-size: 52px; line-height: 1; }
+  #end-title { font-size: 22px; color: var(--gold); letter-spacing: 0.06em; }
+  #end-sub   { font-size: 13px; color: var(--muted); text-align: center; max-width: 260px; }
+  #end-pts   { font-size: 16px; color: var(--green); margin-top: 4px; }
+  #btn-restart {
+    margin-top: 14px; padding: 9px 28px; background: transparent;
+    border: 1px solid var(--accent); color: var(--accent);
+    font-family: var(--font); font-size: 14px; cursor: pointer; letter-spacing: 0.08em;
+  }
+  #btn-restart:hover { background: rgba(88,166,255,0.1); }
+
+  /* LOG */
+  #log-wrap {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 14px; height: 110px; overflow-y: auto;
+    display: flex; flex-direction: column-reverse; gap: 3px;
+  }
+  #log-wrap::-webkit-scrollbar { width: 4px; }
+  #log-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .log-line { font-size: 12px; line-height: 1.5; color: var(--muted); }
+  .log-line::before { content: '> '; color: #30363d; }
+  .log-line.info { color: var(--accent); }
+  .log-line.warn { color: var(--gold); }
+  .log-line.bad  { color: var(--danger); }
+  .log-line.good { color: var(--green); }
+
+  /* RIGHT SIDEBAR */
+  #sidebar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .section-label {
+    font-size: 10px; letter-spacing: 0.14em;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  /* SINGLE DPAD */
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 40px);
+    grid-template-rows: repeat(3, 40px);
+    gap: 3px;
+    margin: 0 auto;
+    width: fit-content;
+  }
+  .dpad-btn {
+    background: #21262d; border: 1px solid var(--border); color: var(--text);
+    font-size: 17px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    border-radius: 4px; font-family: var(--font); transition: background 0.1s, transform 0.08s;
+  }
+  .dpad-btn:hover  { background: #2d333b; }
+  .dpad-btn:active { transform: scale(0.91); }
+  .dpad-btn.ghost  { visibility: hidden; pointer-events: none; }
+  .dpad-btn.fire-on { border-color: var(--danger); color: var(--danger); }
+  .dpad-btn.fire-on:hover { background: rgba(248,81,73,0.1); }
+
+  #fire-btn {
+    display: block; width: 100%;
+    padding: 8px 6px; background: transparent; border: 1px solid var(--border);
+    color: var(--muted); font-family: var(--font); font-size: 11px; letter-spacing: 0.05em;
+    cursor: pointer; border-radius: 4px; text-align: center; transition: all 0.15s;
+    margin-bottom: 8px;
+  }
+  #fire-btn.on { border-color: var(--danger); color: var(--danger); background: rgba(248,81,73,0.08); }
+
+  /* LEGEND */
+  #legend { display: flex; flex-direction: column; gap: 3px; }
+  .leg { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
+  .leg-icon { font-size: 13px; width: 18px; text-align: center; }
+  .leg-key {
+    margin-left: auto; font-size: 10px; background: #21262d;
+    border: 1px solid var(--border); padding: 1px 5px; border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div id="shell">
+
+  <div id="topbar">
+    <div id="logo">WUMPUS <span>CAVE</span></div>
+    <div id="hud-pills">
+      <div class="pill"><span>Room</span><span class="pill-val" id="hud-room">–</span></div>
+      <div class="pill"><span>🏹</span><span class="pill-val" id="hud-arrows">–</span></div>
+      <div class="pill"><span>Score</span><span class="pill-val" id="hud-score">–</span></div>
+    </div>
+  </div>
+
+  <div id="main-row">
+
+    <!-- LEFT: map + log -->
+    <div id="left-col">
+      <div id="map-wrap">
+        <canvas id="cave-canvas"></canvas>
+        <div id="end-overlay" class="hidden">
+          <div id="end-big"></div>
+          <div id="end-title"></div>
+          <div id="end-sub"></div>
+          <div id="end-pts"></div>
+          <button id="btn-restart" onclick="bootGame()">[ RESTART ]</button>
+        </div>
+      </div>
+      <div id="log-wrap"></div>
+    </div>
+
+    <!-- RIGHT: controls + legend -->
+    <div id="sidebar">
+
+      <div>
+        <div class="section-label">Controls</div>
+        <button id="fire-btn" onclick="toggleFire()">[ FIRE MODE: OFF ]</button>
+        <div class="dpad" id="the-dpad">
+          <div class="dpad-btn ghost"></div>
+          <div class="dpad-btn" id="btn-n" onclick="act(0)">↑</div>
+          <div class="dpad-btn ghost"></div>
+          <div class="dpad-btn" id="btn-w" onclick="act(3)">←</div>
+          <div class="dpad-btn ghost"></div>
+          <div class="dpad-btn" id="btn-e" onclick="act(1)">→</div>
+          <div class="dpad-btn ghost"></div>
+          <div class="dpad-btn" id="btn-s" onclick="act(2)">↓</div>
+          <div class="dpad-btn ghost"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Legend</div>
+        <div id="legend">
+          <div class="leg"><span class="leg-icon">🧑</span>You<span class="leg-key">WASD</span></div>
+          <div class="leg"><span class="leg-icon">👾</span>Wumpus</div>
+          <div class="leg"><span class="leg-icon">💰</span>Gold</div>
+          <div class="leg"><span class="leg-icon">🕳️</span>Pit</div>
+          <div class="leg"><span class="leg-icon">🦨</span>Stench</div>
+          <div class="leg"><span class="leg-icon">💨</span>Breeze</div>
+          <div class="leg"><span class="leg-icon">✨</span>Glimmer</div>
+          <div class="leg"><span class="leg-icon">🏹</span>Fire<span class="leg-key">Space</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const ROWS=4, COLS=6, TOTAL=ROWS*COLS;
+const OFFSETS=[[-1,0],[0,1],[1,0],[0,-1]];
+const DIR_NAME=['North','East','South','West'];
+let G={};
+
+function cellIdx(r,c){return r*COLS+c;}
+function cellRC(i){return[Math.floor(i/COLS),i%COLS];}
+function neighbors(i){
+  const[r,c]=cellRC(i);
+  return OFFSETS.map(([dr,dc])=>{const nr=r+dr,nc=c+dc;return(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)?cellIdx(nr,nc):-1;}).filter(v=>v>=0);
+}
+function randCell(excl){let n;do{n=Math.floor(Math.random()*TOTAL);}while(excl.includes(n));return n;}
+
+function bootGame(){
+  const start=randCell([]),wumpus=randCell([start]),pit1=randCell([start,wumpus]),
+        pit2=randCell([start,wumpus,pit1]),gold=randCell([start,wumpus,pit1,pit2]);
+  G={pos:start,wumpus,pits:[pit1,pit2],gold,arrows:5,score:0,
+     visited:new Set([start]),known:new Set([start]),alive:true,won:false,fire:false,hasGold:false};
+  neighbors(start).forEach(n=>G.known.add(n));
+  document.getElementById('end-overlay').classList.add('hidden');
+  setFire(false); clearLog();
+  log('You descend into the cave. Hunt well.','info');
+  sense(); render();
+}
+
+function act(dir){
+  if(!G.alive)return;
+  if(G.fire){shoot(dir);return;}
+  const[r,c]=cellRC(G.pos),[dr,dc]=OFFSETS[dir],nr=r+dr,nc=c+dc;
+  if(nr<0||nr>=ROWS||nc<0||nc>=COLS){log('Solid rock ahead.','warn');return;}
+  G.pos=cellIdx(nr,nc);G.visited.add(G.pos);G.known.add(G.pos);
+  neighbors(G.pos).forEach(n=>G.known.add(n));
+  G.score-=1;log('Moving '+DIR_NAME[dir]+'...');
+  if(!checkDeath())sense();render();
+}
+
+function toggleFire(){if(!G.alive)return;setFire(!G.fire);}
+function setFire(on){
+  G.fire=on;
+  const btn=document.getElementById('fire-btn');
+  btn.textContent=on?'[ FIRE MODE: ON  ]':'[ FIRE MODE: OFF ]';
+  btn.classList.toggle('on',on);
+  document.querySelectorAll('#the-dpad .dpad-btn:not(.ghost)').forEach(b=>b.classList.toggle('fire-on',on));
+}
+
+function shoot(dir){
+  if(!G.alive)return;
+  if(G.arrows<=0){log('No arrows remaining!','bad');setFire(false);return;}
+  G.arrows--;G.score-=5;setFire(false);
+  const[r,c]=cellRC(G.pos),[dr,dc]=OFFSETS[dir];
+  let hit=false,tr=r,tc=c;
+  for(let i=0;i<3;i++){tr+=dr;tc+=dc;if(tr<0||tr>=ROWS||tc<0||tc>=COLS)break;if(cellIdx(tr,tc)===G.wumpus){hit=true;break;}}
+  if(hit){G.score+=200;log('Direct hit! The Wumpus dies! (+200)','good');endGame(true,'🎉','Victory!','The beast is slain.');}
+  else{
+    log('Arrow misses. A roar echoes...','warn');
+    const nb=neighbors(G.wumpus);G.wumpus=nb[Math.floor(Math.random()*nb.length)];
+    if(G.wumpus===G.pos)endGame(false,'💀','Devoured','The Wumpus charged your position.');
+    else log('The Wumpus moved. Stay sharp.','warn');
+  }
+  updateHUD();render();
+}
+
+function sense(){
+  const nb=neighbors(G.pos);
+  if(nb.includes(G.wumpus))log('A foul stench fills the air. 🦨','warn');
+  if(G.pits.some(p=>nb.includes(p)))log('Cold air rises from nearby. 💨','warn');
+  if(nb.includes(G.gold)&&!G.hasGold)log('Something glimmers in the dark. ✨','info');
+  if(G.pos===G.gold&&!G.hasGold){G.hasGold=true;G.score+=100;log('Gold acquired! 💰 (+100)','good');}
+  updateHUD();
+}
+
+function checkDeath(){
+  if(G.pos===G.wumpus){endGame(false,'👾','Consumed','The Wumpus was lurking here.');return true;}
+  if(G.pits.includes(G.pos)){endGame(false,'🕳️','Fallen','You stepped into the void.');return true;}
+  return false;
+}
+
+function endGame(won,icon,title,sub){
+  G.alive=false;G.won=won;
+  document.getElementById('end-big').textContent=icon;
+  document.getElementById('end-title').textContent=title;
+  document.getElementById('end-sub').textContent=sub;
+  document.getElementById('end-pts').textContent='Score: '+G.score;
+  document.getElementById('end-overlay').classList.remove('hidden');
+  render();
+}
+
+function updateHUD(){
+  document.getElementById('hud-room').textContent=G.pos+1;
+  document.getElementById('hud-arrows').textContent=G.arrows;
+  document.getElementById('hud-score').textContent=G.score;
+}
+function clearLog(){document.getElementById('log-wrap').innerHTML='';}
+function log(msg,cls=''){
+  const d=document.createElement('div');
+  d.className='log-line'+(cls?' '+cls:'');
+  d.textContent=msg;
+  const w=document.getElementById('log-wrap');
+  w.insertBefore(d,w.firstChild);
+}
+
+const cvs=document.getElementById('cave-canvas');
+const ctx=cvs.getContext('2d');
+function syncSize(){cvs.width=cvs.offsetWidth;cvs.height=cvs.offsetHeight;}
+
+function render(){
+  const W=cvs.width/COLS,H=cvs.height/ROWS;
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  for(let i=0;i<TOTAL;i++){
+    const[r,c]=cellRC(i),x=c*W,y=r*H;
+    const visited=G.visited.has(i),known=G.known.has(i),cur=i===G.pos;
+    ctx.fillStyle=!known?'#080d12':cur?'#0d1f33':visited?'#1c2128':'#161b22';
+    ctx.fillRect(x,y,W,H);
+    ctx.strokeStyle=cur?'#58a6ff':'#21262d';ctx.lineWidth=cur?2:0.5;
+    ctx.strokeRect(x+1,y+1,W-2,H-2);
+    if(!known)continue;
+    const cx=x+W/2,cy=y+H/2;
+    ctx.font=`${Math.min(W,H)*0.38}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    if(cur)ctx.fillText(G.alive?'🧑':'💥',cx,cy);
+    else if(i===G.gold&&!G.hasGold)ctx.fillText(visited?'💰':'✨',cx,cy);
+    else if(G.pits.includes(i)&&(visited||!G.alive))ctx.fillText('🕳️',cx,cy);
+    else if(i===G.wumpus&&(visited||!G.alive))ctx.fillText(G.alive?'👾':'💀',cx,cy);
+    if(known&&!visited&&!cur){
+      const nb=neighbors(i);let h='';
+      if(nb.includes(G.wumpus))h+='🦨';
+      if(G.pits.some(p=>nb.includes(p)))h+='💨';
+      if(nb.includes(G.gold)&&!G.hasGold)h+='✨';
+      if(h){ctx.font=`${Math.min(W,H)*0.22}px serif`;ctx.fillText(h,cx,cy+H*0.22);}
+    }
+    ctx.font=`${Math.min(W,H)*0.15}px monospace`;
+    ctx.fillStyle='#30363d';ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillText(i+1,x+5,y+4);
+  }
+  updateHUD();
+}
+
+document.addEventListener('keydown',e=>{
+  const m={ArrowUp:0,ArrowRight:1,ArrowDown:2,ArrowLeft:3,w:0,d:1,s:2,a:3,W:0,D:1,S:2,A:3};
+  if(e.key in m){e.preventDefault();act(m[e.key]);}
+  if(e.key===' '||e.key==='f'||e.key==='F'){e.preventDefault();toggleFire();}
+});
+
+window.addEventListener('resize',()=>{syncSize();render();});
+syncSize();
+bootGame();
+</script>
+</body>
+</html>
